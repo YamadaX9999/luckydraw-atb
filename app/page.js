@@ -18,7 +18,7 @@ export default function Home() {
   // Stats / UI state
   const [status, setStatus] = useState('idle');
   const [code, setCode] = useState('');
-  const [drums, setDrums] = useState(Array(12).fill('?'));
+  const [drums, setDrums] = useState(Array(6).fill('?'));
   const [progress, setProgress] = useState({ used: 0, total: 1000 });
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -166,10 +166,10 @@ export default function Home() {
       } else if (d.status === 'rate_limited') {
         setRetryAfter(d.retryAfter || 24);
         setStatus('rate_limited');
-        setDrums(Array(12).fill('-'));
+        setDrums(Array(6).fill('-'));
       } else if (d.status === 'empty') {
         setStatus('empty');
-        setDrums(Array(12).fill('-'));
+        setDrums(Array(6).fill('-'));
       } else if (d.status === 'unauthorized') {
         setStatus('auth_failed');
       } else {
@@ -242,7 +242,7 @@ export default function Home() {
 
   const pct = progress.total > 0 ? (progress.used / progress.total) * 100 : 0;
   const drumStr = [
-    ...drums.slice(0, 4), '-', ...drums.slice(4, 8), '-', ...drums.slice(8, 12)
+    ...drums.slice(0, 3), '-', ...drums.slice(3, 6)
   ];
 
   return (
