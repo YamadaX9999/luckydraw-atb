@@ -65,13 +65,20 @@ export async function POST(req) {
 
     const uid = profile.userId;
 
-    // เช็ค already_drawn ก่อน rate limit เพื่อไม่กินโควต้า
+    // 1. เช็ค already_drawn ก่อน เพื่อไม่กินโควต้า rate limit
     const existingCode = await redis.get(`line:${uid}`);
     if (existingCode !== null && existingCode !== undefined) {
       return Response.json({ status: 'already_drawn', code: existingCode });
     }
 
-    // Rate limit ต่อ IP
+    // 2. เช็คว่า code_pool ว่างหรือยัง ก่อนกิน rate limit
+    //    SCARD คืนค่า 0 ถ้า set ไม่มีอยู่หรือว่างเปล่า — ไม่กิน quota ใดๆ
+    const poolSize = await redis.scard('code_pool');
+    if (poolSize === 0) {
+      return Response.json({ status: 'empty' });
+    }
+
+    // 3. Rate limit ต่อ IP (กินโควต้าเฉพาะตอนที่ pool ยังมีโค้ดเหลือ)
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
     const ipResult = await ipRatelimit.limit(ip);
     if (!ipResult.success) {
@@ -79,20 +86,21 @@ export async function POST(req) {
       return Response.json({ status: 'rate_limited', retryAfter: retryAfterHrs });
     }
 
-    // Rate limit ต่อ UID
+    // 4. Rate limit ต่อ UID
     const uidResult = await uidRatelimit.limit(uid);
     if (!uidResult.success) {
       const retryAfterHrs = Math.ceil((uidResult.reset - Date.now()) / 1000 / 60 / 60);
       return Response.json({ status: 'rate_limited', retryAfter: retryAfterHrs });
     }
 
-    // Atomic: SPOP + SET + LPUSH + LTRIM ในคำสั่งเดียว ผ่าน Lua script
+    // 5. Atomic: SPOP + SET + LPUSH + LTRIM ในคำสั่งเดียว ผ่าน Lua script
     const result = await redis.eval(
       DRAW_SCRIPT,
       ['code_pool', `line:${uid}`, 'draw_log'],
       [uid, String(Date.now()), String(LOG_CAP)]
     );
 
+    // กรณี race condition: มีคนอื่น SPOP โค้ดสุดท้ายไปก่อนในช่วง scard → eval
     if (!result || result?.err === 'empty') {
       return Response.json({ status: 'empty' });
     }
